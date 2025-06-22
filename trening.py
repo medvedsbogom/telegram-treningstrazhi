@@ -21,7 +21,7 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     level=logging.INFO,
     handlers=[
-        logging.FileHandler("bot.log"),
+        logging.FileHandler("bot.log"),  # Относительный путь
         logging.StreamHandler()
     ]
 )
@@ -179,6 +179,7 @@ async def is_admin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     global message_id
+    logger.info(f"Получена команда /start от {update.effective_user.username or 'неизвестный пользователь'}")
     is_admin_user = await is_admin(update, context)
     await update.message.reply_text(
         "Добро пожаловать! Используйте кнопки для взаимодействия или /menu для просмотра всех команд.",
@@ -347,7 +348,7 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     if query.data == "stats":
         if not is_admin_user:
-            await query.message.reply_text("Эта функция доступна только администраторам!")
+            await query.message.reply_text("Эта функция доступна только администраторам группы!")
             return
         await query.message.reply_text(format_stats(), parse_mode="HTML")
         return
@@ -448,7 +449,7 @@ def run_bot():
     try:
         logger.info("Запуск бота...")
         application = Application.builder().token(TOKEN).build()
-
+        logger.info("Приложение инициализировано")
         conv_handler = ConversationHandler(
             entry_points=[CommandHandler('settitle', set_title_start)],
             states={
@@ -456,7 +457,6 @@ def run_bot():
             },
             fallbacks=[CommandHandler('cancel', set_title_cancel)]
         )
-
         application.add_handler(CommandHandler("start", start))
         application.add_handler(CommandHandler("menu", menu))
         application.add_handler(CommandHandler("stats", stats))
@@ -464,7 +464,7 @@ def run_bot():
         application.add_handler(CommandHandler("clearall", clear_all))
         application.add_handler(conv_handler)
         application.add_handler(CallbackQueryHandler(button))
-
+        logger.info("Обработчики добавлены, запуск polling...")
         loop.run_until_complete(application.initialize())
         loop.run_until_complete(application.updater.start_polling(allowed_updates=Update.ALL_TYPES))
         loop.run_forever()
