@@ -1,15 +1,18 @@
 import logging
 import json
 import os
-import time
-import sys
 from datetime import datetime
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update, ReplyKeyboardMarkup, ReplyKeyboardRemove, __version__ as telegram_version
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes, ConversationHandler, MessageHandler, filters
 from telegram.error import TelegramError
+from flask import Flask
 
-# Добавляем пользовательскую директорию в sys.path
-sys.path.append('/home/mikeguthrie2727/.local/lib/python3.13/site-packages')
+# Настройка Flask для health-check
+app = Flask(__name__)
+
+@app.route('/')
+def health_check():
+    return "Bot is running", 200
 
 # Проверяем версию библиотеки
 print(f"Using python-telegram-bot version: {telegram_version}")
@@ -19,18 +22,23 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     level=logging.INFO,
     handlers=[
-        logging.FileHandler("/home/mikeguthrie2727/bot.log"),
+        logging.FileHandler("bot.log"),
         logging.StreamHandler()
     ]
 )
 logger = logging.getLogger(__name__)
 
-# Токен бота
-TOKEN = os.getenv("BOT_TOKEN") or "8048456136:AAHnpah8JeI2Zkio4UZaCLShc0NBQoSMbg8"
+# Токен бота из .env
+from dotenv import load_dotenv
+load_dotenv()
+TOKEN = os.getenv("BOT_TOKEN")
+if not TOKEN:
+    logger.error("Токен бота не установлен! Проверь .env.")
+    exit(1)
 
-# Путь к файлам данных
-DATA_FILE = "/home/mikeguthrie2727/bot_data.json"
-LOG_FILE = "/home/mikeguthrie2727/action_log.json"
+# Путь к файлам данных (относительный)
+DATA_FILE = "bot_data.json"
+LOG_FILE = "action_log.json"
 
 # Состояние для ConversationHandler
 SET_TITLE = 0
@@ -460,49 +468,33 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 # Основная функция с обработкой перезапусков
 def run_bot():
-    if not TOKEN:
-        logger.error("Токен бота не установлен! Убедитесь, что переменная окружения BOT_TOKEN задана.")
-        return
-
-    while True:
-        try:
-            logger.info("Запуск бота...")
-            application = Application.builder().token(TOKEN).build()
-
-            conv_handler = ConversationHandler(
-                entry_points=[CommandHandler('settitle', set_title_start)],
-                states={
-                    SET_TITLE: [MessageHandler(filters.TEXT & ~filters.COMMAND, set_title_save)],
-                },
-                fallbacks=[CommandHandler('cancel', set_title_cancel)]
-            )
-
-            application.add_handler(CommandHandler("start", start))
-            application.add_handler(CommandHandler("menu", menu))
-            application.add_handler(CommandHandler("stats", stats))
-            application.add_handler(CommandHandler("cleartitle", clear_title))
-            application.add_handler(CommandHandler("clearall", clear_all))
-            application.add_handler(conv_handler)
-            application.add_handler(CallbackQueryHandler(button))
-
-            application.run_polling(allowed_updates=Update.ALL_TYPES)
-        except TelegramError as te:
-            logger.error(f"Ошибка Telegram: {te}. Перезапуск через 10 секунд...")
-            time.sleep(10)
-        except Exception as e:
-            logger.error(f"Неизвестная ошибка: {e}. Перезапуск через 10 секунд...")
-            time.sleep(10)
-        finally:
-            logger.info("Остановка бота, очистка ресурсов...")
-            time.sleep(5)
-
-def main():
     try:
-        run_bot()
-    except KeyboardInterrupt:
-        logger.info("Бот остановлен пользователем.")
+        logger.info("Запуск бота...")
+        application = Application.builder().token(TOKEN).build()
+
+        conv_handler = ConversationHandler(
+            entry_points=[CommandHandler('settitle', set_title_start)],
+            states={
+                SET_TITLE: [MessageHandler(filters.TEXT & ~filters.COMMAND, set_title_save)],
+            },
+            fallbacks=[CommandHandler('cancel', set_title_cancel)]
+        )
+
+        application.add_handler(CommandHandler("start", start))
+        application.add_handler(CommandHandler("menu", menu))
+        application.add_handler(CommandHandler("stats", stats))
+        application.add_handler(CommandHandler("cleartitle", clear_title))
+        application.add_handler(CommandHandler("clearall", clear_all))
+        application.add_handler(conv_handler)
+        application.add_handler(CallbackQueryHandler(button))
+
+        application.run_polling(allowed_updates=Update.ALL_TYPES)
+    except TelegramError as te:
+        logger.error(f"Ошибка Telegram: {te}")
     except Exception as e:
-        logger.error(f"Критическая ошибка в main: {e}")
+        logger.error(f"Неизвестная ошибка: {e}")
 
 if __name__ == "__main__":
-    main()
+    import threading
+    threading.Thread(target=run_bot).start()
+    app.run(host='0.0.0.0', port=8080)
