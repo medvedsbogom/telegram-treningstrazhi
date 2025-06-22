@@ -21,7 +21,7 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     level=logging.INFO,
     handlers=[
-        logging.FileHandler("bot.log"),  # Относительный путь
+        logging.FileHandler("bot.log"),
         logging.StreamHandler()
     ]
 )
@@ -171,6 +171,7 @@ async def is_admin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
     user_id = update.effective_user.id
     chat_id = update.effective_chat.id
     try:
+        logger.info(f"Проверка статуса администратора для user_id={user_id}, chat_id={chat_id}")
         member = await context.bot.get_chat_member(chat_id, user_id)
         return member.status in ["administrator", "creator"]
     except Exception as e:
@@ -208,7 +209,7 @@ async def set_title_start(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     if not await is_admin(update, context):
         await update.message.reply_text("Эта команда доступна только администраторам группы!")
         return ConversationHandler.END
-
+    logger.info(f"Начало установки заголовка от {update.effective_user.username}")
     await update.message.reply_text(
         "Пожалуйста, введите новый заголовок:",
         reply_markup=ReplyKeyboardRemove()
@@ -263,7 +264,7 @@ async def clear_title(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     if not is_admin_user:
         await update.message.reply_text("Эта команда доступна только администраторам группы!")
         return
-
+    logger.info(f"Сброс заголовка от {update.effective_user.username}")
     custom_title = ""
     save_data(participants, queue, payments, custom_title, message_id)
     log_action(update.effective_user.id, update.effective_user.full_name or "Без имени", "Сбросил заголовок")
@@ -300,7 +301,7 @@ async def clear_all(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not is_admin_user:
         await update.message.reply_text("Эта команда доступна только администраторам группы!")
         return
-
+    logger.info(f"Очистка всех данных от {update.effective_user.username}")
     participants = []
     queue = []
     payments = set()
@@ -311,7 +312,6 @@ async def clear_all(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "Список, очередь и все данные успешно очищены.",
         reply_markup=create_menu_keyboard(is_admin_user)
     )
-
     if message_id:
         try:
             await context.bot.edit_message_text(
@@ -339,6 +339,7 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     global message_id
     query = update.callback_query
     await query.answer()
+    logger.info(f"Получен callback: {query.data} от {query.from_user.username or 'неизвестный пользователь'}")
 
     user_id = query.from_user.id
     user_name = query.from_user.full_name or query.from_user.username or "Без имени"
