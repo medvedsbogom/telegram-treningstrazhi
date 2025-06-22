@@ -1,23 +1,22 @@
 import logging
 import json
 import os
+import time
 from datetime import datetime
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update, ReplyKeyboardMarkup, ReplyKeyboardRemove, __version__ as telegram_version
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes, ConversationHandler, MessageHandler, filters
 from telegram.error import TelegramError
 from flask import Flask
+import asyncio
 
-# Настройка Flask для health-check
 app = Flask(__name__)
 
 @app.route('/')
 def health_check():
     return "Bot is running", 200
 
-# Проверяем версию библиотеки
 print(f"Using python-telegram-bot version: {telegram_version}")
 
-# Настройка логирования
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     level=logging.INFO,
@@ -28,22 +27,18 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Токен бота из .env
 from dotenv import load_dotenv
 load_dotenv()
 TOKEN = os.getenv("BOT_TOKEN")
 if not TOKEN:
-    logger.error("Токен бота не установлен! Проверь .env.")
+    logger.error("Токен бота не установлен! Проверь переменные окружения.")
     exit(1)
 
-# Путь к файлам данных (относительный)
 DATA_FILE = "bot_data.json"
 LOG_FILE = "action_log.json"
 
-# Состояние для ConversationHandler
 SET_TITLE = 0
 
-# Загрузка данных из файла
 def load_data():
     try:
         with open(DATA_FILE, "r") as f:
@@ -70,7 +65,6 @@ def load_data():
         logger.error(f"Неизвестная ошибка при загрузке {DATA_FILE}: {e}")
         return [], [], set(), "", None
 
-# Сохранение данных в файл
 def save_data(participants, queue, payments, custom_title, message_id):
     try:
         with open(DATA_FILE, "w") as f:
@@ -84,7 +78,6 @@ def save_data(participants, queue, payments, custom_title, message_id):
     except Exception as e:
         logger.error(f"Ошибка при сохранении данных в {DATA_FILE}: {e}")
 
-# Загрузка лога действий
 def load_action_log():
     try:
         with open(LOG_FILE, "r") as f:
@@ -103,7 +96,6 @@ def load_action_log():
         logger.error(f"Неизвестная ошибка при загрузке {LOG_FILE}: {e}")
         return []
 
-# Сохранение лога действий
 def save_action_log(log):
     try:
         with open(LOG_FILE, "w") as f:
@@ -111,7 +103,6 @@ def save_action_log(log):
     except Exception as e:
         logger.error(f"Ошибка при сохранении лога в {LOG_FILE}: {e}")
 
-# Логирование действия
 def log_action(user_id, user_name, action):
     action_log = load_action_log()
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -123,10 +114,8 @@ def log_action(user_id, user_name, action):
     })
     save_action_log(action_log)
 
-# Глобальные переменные
 participants, queue, payments, custom_title, message_id = load_data()
 
-# Функция для создания инлайн-клавиатуры
 def create_keyboard(is_admin=False):
     keyboard = [
         [InlineKeyboardButton("Записаться", callback_data="signup")],
@@ -138,7 +127,6 @@ def create_keyboard(is_admin=False):
         keyboard.append([InlineKeyboardButton("📊 Статистика", callback_data="stats")])
     return InlineKeyboardMarkup(keyboard)
 
-# Функция для создания диалогового меню
 def create_menu_keyboard(is_admin=False):
     keyboard = [
         ["/start", "/menu"],
@@ -148,7 +136,6 @@ def create_menu_keyboard(is_admin=False):
         keyboard.append(["/stats"])
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=False)
 
-# Функция для форматирования списка участников и очереди
 def format_list():
     title = custom_title if custom_title else "Список участников и очередь"
     message = f"📋 <b>{title}</b>\n\n"
@@ -170,7 +157,6 @@ def format_list():
 
     return message
 
-# Функция для форматирования статистики
 def format_stats():
     action_log = load_action_log()
     if not action_log:
@@ -181,7 +167,6 @@ def format_stats():
         message += f"[{entry['timestamp']}] {entry['user_name']} ({entry['user_id']}): {entry['action']}\n"
     return message
 
-# Проверка, является ли пользователь администратором
 async def is_admin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
     user_id = update.effective_user.id
     chat_id = update.effective_chat.id
@@ -192,7 +177,6 @@ async def is_admin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
         logger.error(f"Ошибка при проверке статуса администратора: {e}")
         return False
 
-# Обработчик команды /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     global message_id
     is_admin_user = await is_admin(update, context)
@@ -206,7 +190,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     message_id = sent_message.message_id
     save_data(participants, queue, payments, custom_title, message_id)
 
-# Обработчик команды /menu
 async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     is_admin_user = await is_admin(update, context)
     await update.message.reply_text(
@@ -214,14 +197,12 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         reply_markup=create_menu_keyboard(is_admin_user)
     )
 
-# Обработчик команды /stats
 async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not await is_admin(update, context):
         await update.message.reply_text("Эта команда доступна только администраторам группы!")
         return
     await update.message.reply_text(format_stats(), parse_mode="HTML")
 
-# Обработчик команды /settitle (начало)
 async def set_title_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     if not await is_admin(update, context):
         await update.message.reply_text("Эта команда доступна только администраторам группы!")
@@ -233,7 +214,6 @@ async def set_title_start(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     )
     return SET_TITLE
 
-# Обработчик ввода заголовка
 async def set_title_save(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     global custom_title, message_id
     is_admin_user = await is_admin(update, context)
@@ -268,7 +248,6 @@ async def set_title_save(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         save_data(participants, queue, payments, custom_title, message_id)
     return ConversationHandler.END
 
-# Обработчик отмены ввода заголовка
 async def set_title_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     is_admin_user = await is_admin(update, context)
     await update.message.reply_text(
@@ -277,7 +256,6 @@ async def set_title_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     )
     return ConversationHandler.END
 
-# Обработчик команды /cleartitle
 async def clear_title(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     global custom_title, message_id
     is_admin_user = await is_admin(update, context)
@@ -315,7 +293,6 @@ async def clear_title(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         message_id = sent_message.message_id
         save_data(participants, queue, payments, custom_title, message_id)
 
-# Обработчик команды /clearall
 async def clear_all(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     global participants, queue, payments, custom_title, message_id
     is_admin_user = await is_admin(update, context)
@@ -357,7 +334,6 @@ async def clear_all(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         message_id = sent_message.message_id
         save_data(participants, queue, payments, custom_title, message_id)
 
-# Обработчик нажатий на кнопки
 async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     global message_id
     query = update.callback_query
@@ -466,8 +442,9 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         message_id = sent_message.message_id
         save_data(participants, queue, payments, custom_title, message_id)
 
-# Основная функция с обработкой перезапусков
 def run_bot():
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
     try:
         logger.info("Запуск бота...")
         application = Application.builder().token(TOKEN).build()
@@ -488,13 +465,21 @@ def run_bot():
         application.add_handler(conv_handler)
         application.add_handler(CallbackQueryHandler(button))
 
-        application.run_polling(allowed_updates=Update.ALL_TYPES)
+        loop.run_until_complete(application.initialize())
+        loop.run_until_complete(application.updater.start_polling(allowed_updates=Update.ALL_TYPES))
+        loop.run_forever()
     except TelegramError as te:
-        logger.error(f"Ошибка Telegram: {te}")
+        logger.error(f"Ошибка Telegram: {te}. Перезапуск через 10 секунд...")
+        time.sleep(10)
     except Exception as e:
-        logger.error(f"Неизвестная ошибка: {e}")
+        logger.error(f"Неизвестная ошибка: {e}. Перезапуск через 10 секунд...")
+        time.sleep(10)
+    finally:
+        loop.close()
+        logger.info("Остановка бота, очистка ресурсов...")
+        time.sleep(5)
 
 if __name__ == "__main__":
     import threading
-    threading.Thread(target=run_bot).start()
-    app.run(host='0.0.0.0', port=8080)
+    threading.Thread(target=run_bot, daemon=True).start()
+    app.run(host='0.0.0.0', port=8080, threaded=True)
