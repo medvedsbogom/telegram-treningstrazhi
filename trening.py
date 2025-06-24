@@ -1,25 +1,18 @@
 import logging
 import os
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
-from telegram.error import TelegramError
 
-# Настройка логирования
+# Настройка логирования (только в stdout для Docker)
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     level=logging.INFO,
-    handlers=[
-        logging.FileHandler("bot.log"),
-        logging.StreamHandler()
-    ]
+    handlers=[logging.StreamHandler()]
 )
 logger = logging.getLogger(__name__)
 
-# Загрузка токена
-TOKEN = os.getenv("BOT_TOKEN")
-if not TOKEN:
-    logger.error("Токен бота не установлен! Проверь переменные окружения.")
-    exit(1)
+# Токен бота (вставлен напрямую для простоты)
+TOKEN = "8048456136:AAHnpah8JeI2Zkio4UZaCLShc0NBQoSMbg8"
 
 # Функция команды /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
